@@ -1,84 +1,131 @@
+
 import pandas as pd
-import logging
-log = logging.getLogger('creditcard')
-logging.getLogger('yfinance').setLevel(logging.CRITICAL)
-logging.getLogger('yfinance').disabled = True
 import yfinance as yf
 import time
 import datetime
 from pygame import mixer  # Load the popular external library
 from playsound import playsound
+import sys
+
+import logging
+logging.getLogger(yf.__name__).setLevel(logging.CRITICAL )
 
 
-support = 0
-resistance = 0
-prev_volume = 0
-support_found = False
-resistance_found = False
-trapping_candle_found = False
+# support = 0
+# resistance = 0
+# prev_volume = 0
+# support_found = False
+# resistance_found = False
+# trapping_candle_found = False
+
+class ScriptInfo:
+    def __init__(self):
+        self.time = 0
+        self.support = 0
+        self.resistance = 0
+        self.prev_volume = 0
+        self.support_found = False
+        self.resistance_found = False
+        self.buyers_trapping_candle_found = False
+        self.sellers_trapping_candle_found = False
 
 
-def check_for_trapping_candle(volume_traded,open_value,close_value,high_value,low_value):
-    global trapping_candle_found
-    if(volume_traded >= prev_volume):
-        # Sellers trapping candle
-        if(open_value < close_value):
-            
+#Filter trapping candles
+class StrategyChecker:
+    def __init__(self):
+        self.is_started = False
+        self.scripts = {}
+        nifty_tickers=pd.read_csv('Nifty_yahoo_ticker.csv')
+        self.tickers_list=nifty_tickers['Yahoo_Symbol'].tolist()
+
+    def check_for_trapping_candle(self,script,volume_traded,open_value,close_value,high_value,low_value,ticker):
+        if(volume_traded > script.prev_volume):
             risk = high_value - low_value
-            # if(risk < 5):
-            trapping_candle_found = True
-            print("***************** Sellers Trapping Candle Found**************** Risk :",high_value,low_value,risk)
-            playsound('alert_tone.mp3')
-
-def calculate_support_resistance(high_value,low_value):
-    global resistance,support
-    if(high_value > resistance):
-        resistance = high_value
-    if(low_value < support or low_value==0):
-        support = low_value
-
-while True :
-    # full_data = yf.download(tickers='AAPL', period='1d', interval='5m')
-    # for index, data in full_data.iterrows():
-    now = datetime.datetime.now()
-    # market_opne_time = now.replace(hour=9,minute=16,second=0)
-    market_opne_time = now.replace(hour=19,minute=10,second=0) # us 
-    if 1:
-    # if (now > market_opne_time):
-        # for index, data in full_data.iterrows():
-        # print("Market opened")
-        data = yf.download(tickers='AAPL', period='5m', interval='5m')
-        open_value =data['Open'][0]
-        high_value = data['High'][0]
-        low_value = data['Low'][0]
-        close_value = data['Close'][0]
-        volume_traded = data['Volume'][0]
-        # print(data)
-        # open_value =data['Open']
-        # high_value = data['High']
-        # low_value = data['Low']
-        # close_value = data['Close']
-        # volume_traded = data['Volume']
-
-        if (prev_volume == 0 ):
-            prev_volume = volume_traded
-
-        if(resistance < high_value or support > low_value ):
-            support_found = False
-            resistance_found = False
-            trapping_candle_found = False
-            calculate_support_resistance(high_value,low_value)
-
-        if(support_found and resistance_found):
-            check_for_trapping_candle(volume_traded,open_value,close_value,high_value,low_value)
-
-        elif(volume_traded > prev_volume):
-            if(open_value <= close_value):
-                support_found = True
+            if(open_value > close_value):
+                # Sellers trapping candle
+                if(not script.sellers_trapping_candle_found):
+                    script.sellers_trapping_candle_found = True
+                    print(f"************ Sellers Trapping Candle Found for {ticker}************ Risk :",risk)
+                    playsound('alert_tone.mp3')
             else:
-                resistance_found = True
+                # Buyers trapping candle
+                if(not script.buyers_trapping_candle_found):
+                    script.buyers_trapping_candle_found = True
+                    print(f"************ Buyers Trapping Candle Found for {ticker}************ Risk :",risk)
+                    playsound('alert_tone.mp3')
+
+    def calculate_support_resistance(self,script,high_value,low_value):
         
-        prev_volume = volume_traded
-    else:
-        now = datetime.datetime.now()
-    time.sleep(1)
+        if(high_value > script.resistance):
+            script.resistance = high_value
+            # print("Resistance found")
+        if(low_value < script.support or script.support==0):
+            script.support = low_value
+            # print("Suppory found")
+
+    def start_filter(self):
+        while True :
+            # for ticker in  self.tickers_list:
+            # full_data = yf.download(tickers=ticker, period='1d', interval='5m')
+            # for index, data in full_data.iterrows():
+            now = datetime.datetime.now()
+            market_opne_time = now.replace(hour=9,minute=25,second=0)#India
+            # market_opne_time = now.replace(hour=19,minute=10,second=0) # us 
+            # if 1:
+            if (now > market_opne_time):
+                # for index, data in full_data.iterrows():
+                for ticker in  self.tickers_list:
+                    # for index, data in full_data.iterrows():
+                    script = None
+                    if (ticker in self.scripts.keys()):
+                        script = self.scripts[ticker]
+                    else:
+                        script = ScriptInfo()
+                        self.scripts[ticker] = script
+                    data = yf.download(tickers=ticker, period='1d', interval='5m')
+                    #print(data['Name'])
+                    #Taking last 5 min data with volume
+                    if(len(data) < 1 or (len(data) == 2) and data['Volume'][1] == 0):
+                        continue
+                    if(data['Volume'][len(data) -1] != 0):
+                        data = data.iloc[len(data) -1]
+                    else:
+                        data = data.iloc[len(data) -2]
+                    if(script.time == data.name):
+                        continue
+                    
+                    print(ticker,data)
+                    open_value =data['Open']
+                    high_value = data['High']
+                    low_value = data['Low']
+                    close_value = data['Close']
+                    volume_traded = data['Volume']
+                    script.time = data.name # date time 
+                    script.prev_volume = volume_traded
+
+                    if (script.prev_volume == 0 ):
+                        script.prev_volume = volume_traded
+
+                    if(script.resistance < high_value or script.support > low_value ):
+                        script.support_found = False
+                        script.resistance_found = False
+                        script.sellers_trapping_candle_found = False
+                        script.buyers_trapping_candle_found = False
+                        self.calculate_support_resistance(script,high_value,low_value)
+
+                    if(script.support_found and script.resistance_found):
+                        self.check_for_trapping_candle(script,volume_traded,open_value,close_value,high_value,low_value,ticker)
+
+                    elif(volume_traded > script.prev_volume):
+                        if(open_value < close_value):
+                            script.support_found = True
+                        else:
+                            script.resistance_found = True
+
+
+            time.sleep(1)
+
+
+if __name__ == "__main__":
+    strategy_checker = StrategyChecker()
+    strategy_checker.start_filter()
