@@ -65,7 +65,7 @@ class StrategyChecker:
             # full_data = yf.download(tickers=ticker, period='1d', interval='5m')
             # for index, data in full_data.iterrows():
             now = datetime.datetime.now()
-            market_opne_time = now.replace(hour=5,minute=40,second=0)#India
+            market_opne_time = now.replace(hour=9,minute=25,second=0)#India
             # market_opne_time = now.replace(hour=19,minute=10,second=0) # us 
             # if 1:
             if (now > market_opne_time):
