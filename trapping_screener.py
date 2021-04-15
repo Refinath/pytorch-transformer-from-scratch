@@ -7,16 +7,11 @@ from pygame import mixer  # Load the popular external library
 from playsound import playsound
 import sys
 
-import logging
-logging.getLogger(yf.__name__).setLevel(logging.CRITICAL )
-
-
-# support = 0
-# resistance = 0
-# prev_volume = 0
-# support_found = False
-# resistance_found = False
-# trapping_candle_found = False
+#For linux color output
+from termcolor import cprint
+#For windows color output
+import colorama
+colorama.init()
 
 class ScriptInfo:
     def __init__(self):
@@ -36,7 +31,8 @@ class StrategyChecker:
         self.is_started = False
         self.scripts = {}
         nifty_tickers=pd.read_csv('Nifty_yahoo_ticker.csv')
-        self.tickers_list=nifty_tickers['Yahoo_Symbol'].tolist()
+        # self.tickers_list=nifty_tickers['Yahoo_Symbol'].tolist()
+        self.tickers_list = ['7267.T','6758.T','7203.T','7269.T','6330.T']
 
     def check_for_trapping_candle(self,script,volume_traded,open_value,close_value,high_value,low_value,ticker):
         if(volume_traded > script.prev_volume):
@@ -45,13 +41,13 @@ class StrategyChecker:
                 # Sellers trapping candle
                 if(not script.sellers_trapping_candle_found):
                     script.sellers_trapping_candle_found = True
-                    print(f"************ Sellers Trapping Candle Found for {ticker}************ Risk :",risk)
+                    cprint(f"************ Sellers Trapping Candle Found for {ticker}************ Risk :{risk}",'red')
                     playsound('alert_tone.mp3')
             else:
                 # Buyers trapping candle
                 if(not script.buyers_trapping_candle_found):
                     script.buyers_trapping_candle_found = True
-                    print(f"************ Buyers Trapping Candle Found for {ticker}************ Risk :",risk)
+                    print(f"************ Buyers Trapping Candle Found for {ticker}************ Risk :{risk}",'green')
                     playsound('alert_tone.mp3')
 
     def calculate_support_resistance(self,script,high_value,low_value):
@@ -69,7 +65,7 @@ class StrategyChecker:
             # full_data = yf.download(tickers=ticker, period='1d', interval='5m')
             # for index, data in full_data.iterrows():
             now = datetime.datetime.now()
-            market_opne_time = now.replace(hour=9,minute=25,second=0)#India
+            market_opne_time = now.replace(hour=5,minute=40,second=0)#India
             # market_opne_time = now.replace(hour=19,minute=10,second=0) # us 
             # if 1:
             if (now > market_opne_time):
@@ -82,7 +78,7 @@ class StrategyChecker:
                     else:
                         script = ScriptInfo()
                         self.scripts[ticker] = script
-                    data = yf.download(tickers=ticker, period='1d', interval='5m')
+                    data = yf.download(tickers=ticker, period='1d', interval='5m',progress=False)
                     #print(data['Name'])
                     #Taking last 5 min data with volume
                     if(len(data) < 1 or (len(data) == 2) and data['Volume'][1] == 0):
@@ -94,14 +90,13 @@ class StrategyChecker:
                     if(script.time == data.name):
                         continue
                     
-                    print(ticker,data)
+                    # print(ticker,data, end='\r')
                     open_value =data['Open']
                     high_value = data['High']
                     low_value = data['Low']
                     close_value = data['Close']
                     volume_traded = data['Volume']
-                    script.time = data.name # date time 
-                    script.prev_volume = volume_traded
+
 
                     if (script.prev_volume == 0 ):
                         script.prev_volume = volume_traded
@@ -117,10 +112,13 @@ class StrategyChecker:
                         self.check_for_trapping_candle(script,volume_traded,open_value,close_value,high_value,low_value,ticker)
 
                     elif(volume_traded > script.prev_volume):
-                        if(open_value < close_value):
+                        if(open_value < close_value and not script.support_found):
                             script.support_found = True
-                        else:
+                        elif(open_value > close_value and not script.resistance_found):
                             script.resistance_found = True
+                    
+                    script.time = data.name # date time 
+                    script.prev_volume = volume_traded
 
 
             time.sleep(1)
